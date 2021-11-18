@@ -1,10 +1,9 @@
 from xmindparser import xmind_to_dict
 import xlwt, xlrd
 from xlutils.copy import copy
-import pandas as pd
 
 
-def traversal_xmind(root, rootstring, lisitcontainer):
+def traversal_xmind(root, rootstring, listcontainer):
     """
     功能：递归dictionary文件得到容易写入Excel形式的格式。
     注意：rootstring都用str来处理中文字符
@@ -13,36 +12,36 @@ def traversal_xmind(root, rootstring, lisitcontainer):
     """
     if isinstance(root, dict):
         if 'title' in root.keys() and 'topics' in root.keys():
-            traversal_xmind(root['topics'], str(rootstring), lisitcontainer)
+            traversal_xmind(root['topics'], str(rootstring), listcontainer)
         if 'title' in root.keys() and 'topics' not in root.keys():
-            traversal_xmind(root['title'], str(rootstring), lisitcontainer)
+            traversal_xmind(root['title'], str(rootstring), listcontainer)
     elif isinstance(root, list):
         for sonroot in root:
             # traversal_xmind(sonroot, str(rootstring) + "&" + sonroot['title'], lisitcontainer)
             if 'makers' in sonroot and 'callout' in sonroot:
                 traversal_xmind(sonroot, str(rootstring) + "&" + sonroot['title'] + "&" + str(sonroot['makers'][0]) +
-                                "&" + str(sonroot['callout'][0]), lisitcontainer)
+                                "&" + str(sonroot['callout'][0]), listcontainer)
             elif 'callout' in sonroot and 'makers' not in sonroot:
                 traversal_xmind(sonroot, str(rootstring) + "&" + sonroot['title'] + "&" + str(sonroot['callout'][0]),
-                                lisitcontainer)
+                                listcontainer)
             elif 'makers' in sonroot and 'callout' not in sonroot:
                 traversal_xmind(sonroot, str(rootstring) + "&" + sonroot['title'] + "&" + str(sonroot['makers'][0]) +
-                                "&" + '', lisitcontainer)
+                                "&" + '', listcontainer)
             else:
-                traversal_xmind(sonroot, str(rootstring) + "&" + sonroot['title'], lisitcontainer)
+                traversal_xmind(sonroot, str(rootstring) + "&" + sonroot['title'], listcontainer)
 
     elif isinstance(root, str):
         # lisitcontainer.append(str(rootstring.replace('\n', '')))  # 此处是去掉一步骤多结果情况直接拼接
-        lisitcontainer.append(str(rootstring))  # 此处是一步骤多结果时，多结果合并
+        listcontainer.append(str(rootstring))  # 此处是一步骤多结果时，多结果合并
 
 
 def get_case(root):
     rootstring = root['title']
-    lisitcontainer = []
-    traversal_xmind(root, rootstring, lisitcontainer)
+    listcontainer = []
+    traversal_xmind(root, rootstring, listcontainer)
     # for lisitcontaine in lisitcontainer:
     #     print(lisitcontaine)
-    return lisitcontainer
+    return listcontainer
 
 
 def maker_judgment(makers):
@@ -60,9 +59,11 @@ def maker_judgment(makers):
     return maker
 
 
-def write_sheet(b, filename, name, maker, callout, step, result):
-    worksheet.write(b, 0, filename)  # ，模块
+def write_sheet(b, filename, name, maker, managment, testtype, callout, step, result):
+    worksheet.write(b, 0, filename)  # 模块
     worksheet.write(b, 1, name)  # 用例名称
+    worksheet.write(b, 2, managment) #维护人
+    worksheet.write(b, 3, testtype) #测试类型    
     worksheet.write(b, 4, maker)  # 优先级
     worksheet.write(b, 5, callout)  # 前提
     worksheet.write(b, 6, step)  # 用例步骤
@@ -71,13 +72,12 @@ def write_sheet(b, filename, name, maker, callout, step, result):
 
 def deal_with_list(list):
     '''
-    处理从xmind转换过来的用例list
+    处理从xmind转换过来的用例list，并写入Excel中
     :param list: 传入从xmind转换好的用例列表
     :return:
     '''
-    list_a = []
+    b = 2  # 记录写了多少行
     for i in list:
-        dict_list = {}
         j = i.split("&")
         # print(j)
         if 'priority-1' in j or 'priority-2' in j or 'priority-3' in j or 'priority-4' in j or 'priority-5' in j:
@@ -94,30 +94,33 @@ def deal_with_list(list):
             elif 'priority-5' in j:
                 x = j.index('priority-5')
             maker = maker_judgment(j[x])
-            callout = j[x + 1]
-            if j[x + 1] == j[-1]:
+            callout = j[x+1]
+            print(callout)
+            managment = j[x-3]
+            testtype = j[x-2]
+            if j[x+1] == j[-1]:
                 result = ""
                 step = ""
-            elif j[x + 2] == j[-1]:
+            elif j[x+2] == j[-1]:
                 result = ""
                 step = j[-1]
-            elif j[x + 3] == j[-1]:
+            elif j[x+3] == j[-1]:
                 result = j[-1]
                 step = j[-2]
             filename = j[1]
-            name = j[x - 1]
-            for a in j[1:x - 2]:
-                filename += "/" + a
+            # print(j[1])
+            name = j[x-1]
+            # for a in j[1:x-2]:
+            #     print(a)
+            #     filename += "/" + a
             # print(filename, name, maker, callout, step, result)
-            dict_list.update(filename=filename, name=name, maker=maker, callout=callout, step=step, result=result)
-            list_a.append(dict_list)
-
-    return list_a
+            write_sheet(b, filename, name, maker, managment, testtype,  callout, step, result)  # 写入Excel
+            b += 1
 
 
 def deal_excle(filename):
     '''
-    tapd导入用例必须使用自有模板，因为此处复制模板Excel后生成新表
+    此处复制模板Excel后生成新表
     :param filename: 模板地址
     :return:
     '''
@@ -129,54 +132,12 @@ def deal_excle(filename):
     return readbook, worksheet
 
 
-def deal_data(list):
-    '''
-    处理接受到的各项数据，完成步骤及结果拼接，返回列表
-    @param list:
-    @return:
-    '''
-    for i in range(len(list) - 2, -1, -1):
-        if list[i]['filename'] == list[i + 1]['filename'] and list[i]['name'] == list[i + 1]['name'] and list[i][
-            'maker'] == list[i + 1]['maker']:
-            list[i]['filename'] = list[i]['filename']
-            list[i]['name'] = list[i]['name']
-            list[i]['maker'] = list[i]['maker']
-            list[i]['callout'] = list[i]['callout']
-            list[i]['step'] = list[i]['step'] + '&' + list[i + 1]['step']
-            list[i]['result'] = list[i]['result'] + '&' + list[i + 1]['result']
-            list.pop(i + 1)
-    return list
-
-
-def get_real(list):
-    '''
-    处理步骤以及预期结果序号问题
-    @param list:
-    @return:
-    '''
-    b = 2  # 记录写了多少行
-    for item in list:
-        j = item['step'].split("&")
-        item['step'] = ''
-        for s in range(1, len(j) + 1):
-            item['step'] += str(s) + "." + j[s - 1] + '\n'
-        k = item['result'].split("&")
-        item['result'] = ''
-        for n in range(1, len(k) + 1):
-            item['result'] += str(n) + "." + k[n - 1] + '\n'
-    for items in list:
-        write_sheet(b, items['filename'], items['name'], items['maker'], items['callout'], items['step'],
-                    items['result'])  # 写入Excel
-        b += 1
-    # print(list)
-
-
 if __name__ == '__main__':
-    root = xmind_to_dict("/Users/easonhe/Desktop/1025sprint.xmind")[0]['topic']
-    file_name = '//Users/easonhe/test/XMindtoExcel/pingcode模板.xls'
+    root = xmind_to_dict("/home/test/Documents/xmind_to_excle/IDE2.0.xmind")[0]['topic']
+    # print(root)
+    file_name = '/home/test/Documents/xmind_to_excle/pingcode模板.xls'
     readbook, worksheet = deal_excle(file_name)
     case = get_case(root)
-    list1 = deal_with_list(case)
-    list2 = deal_data(list1)
-    get_real(list2)
-    readbook.save('/Users/easonhe/test/XMindtoExcel/' + root["title"] + ".xls")  # 此处可以填写生成位置，
+    deal_with_list(case)
+    readbook.save('/home/test/Desktop/' + root["title"] + ".xls")  # 此处可以填写生成位置，
+    
